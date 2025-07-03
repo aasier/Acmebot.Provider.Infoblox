@@ -1,55 +1,62 @@
-using Acmebot.Provider.Infoblox.Infoblox;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Text.Json;
+using Acmebot.Provider.Infoblox.Infoblox;
 
 namespace Acmebot.Provider.Infoblox
 {
     public class FunctionApi
     {
-        private readonly ILogger<FunctionApi> _logger;
-        private readonly InfobloxService _infobloxService;
+        private readonly InfobloxService _service;
+        private readonly ILogger _logger;
 
-        public FunctionApi(ILogger<FunctionApi> logger, InfobloxService infobloxService)
+        public FunctionApi(InfobloxService service, ILoggerFactory loggerFactory)
         {
-            _logger = logger;
-            _infobloxService = infobloxService;
+            _service = service;
+            _logger = loggerFactory.CreateLogger<FunctionApi>();
         }
 
-        public record Payload(string Type, int Ttl, string[] Values);
-
-        [Function(nameof(GetZones))]
-        public async Task<IActionResult> GetZones([HttpTrigger(AuthorizationLevel.Admin, "get", Route = "zones")] HttpRequest req)
+        [Function("GetZones")]
+        public async Task<HttpResponseData> GetZones(
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "zones")] HttpRequestData req)
         {
-            _logger.LogInformation("Request to get zones");
-            var zones = await _infobloxService.GetZonesAsync();
-            return new OkObjectResult(zones);
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            var zones = await _service.GetZonesAsync();
+            await response.WriteAsJsonAsync(zones);
+            return response;
         }
 
-        [Function(nameof(AddTxt))]
-        public async Task<IActionResult> AddTxt(
-            [HttpTrigger(AuthorizationLevel.Admin, "put", Route = "zones/{zone}/records/{name}")] HttpRequest req,
-            string zone,
-            string name)
+        [Function("AddTxtRecord")]
+        public async Task<HttpResponseData> AddTxtRecord(
+            [HttpTrigger(AuthorizationLevel.Function, "put", Route = "zones/{zone}/records/{name}")] HttpRequestData req,
+            string zone, string name)
         {
-            var payload = await JsonSerializer.DeserializeAsync<Payload>(req.Body);
-            foreach (var value in payload.Values)
-                await _infobloxService.AddTxtRecordAsync(zone, name, value);
-            return new OkResult();
+            var body = await JsonSerializer.DeserializeAsync<RecordRequest>(req.Body);
+            await _service.AddTxtRecordAsync(zone, name, body);
+            var response = req.CreateResponse(HttpStatusCode.NoContent);
+            return response;
         }
 
-        [Function(nameof(RemoveTxt))]
-        public async Task<IActionResult> RemoveTxt(
-            [HttpTrigger(AuthorizationLevel.Admin, "delete", Route = "zones/{zone}/records/{name}")] HttpRequest req,
-            string zone,
-            string name)
+        [Function("DeleteTxtRecord")]
+        public async Task<HttpResponseData> DeleteTxtRecord(
+            [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "zones/{zone}/records/{name}")] HttpRequestData req,
+            string zone, string name)
         {
-            var payload = await JsonSerializer.DeserializeAsync<Payload>(req.Body);
-            foreach (var value in payload.Values)
-                await _infobloxService.RemoveTxtRecordAsync(zone, name, value);
-            return new OkResult();
+            var body = await JsonSerializer.DeserializeAsync<RecordRequest>(req.Body);
+            await _service.DeleteTxtRecordAsync(zone, name, body);
+            var response = req.CreateResponse(HttpStatusCode.NoContent);
+            return response;
         }
+    }
+
+    public class RecordRequest
+    {
+        public string Type { get; set; }
+        public int Ttl { get; set; }
+        public List<string> Values { get; set; }
     }
 }

@@ -1,68 +1,76 @@
-
+using System;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using Microsoft.Extensions.Configuration;
 
 namespace Acmebot.Provider.Infoblox.Infoblox
 {
     public class InfobloxClient
     {
-        private readonly string _baseUrl;
-        private readonly string _username;
-        private readonly string _password;
         private readonly HttpClient _httpClient;
+        private readonly string _baseUrl;
 
-        public InfobloxClient(HttpClient httpClient, string baseUrl, string username, string password)
+        public InfobloxClient(IConfiguration configuration, HttpClient httpClient)
         {
-            _baseUrl = baseUrl.TrimEnd('/');
-            _username = username;
-            _password = password;
             _httpClient = httpClient;
-            var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{_username}:{_password}"));
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
+            _baseUrl = configuration["Infoblox__BaseUrl"] ?? throw new ArgumentNullException("Infoblox__BaseUrl");
+            var username = configuration["Infoblox__Username"];
+            var password = configuration["Infoblox__Password"];
+            var byteArray = Encoding.ASCII.GetBytes($"{username}:{password}");
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(byteArray));
         }
 
-        public async Task<string[]> GetZonesAsync()
+        public async Task<IEnumerable<string>> GetZonesAsync()
         {
-            var resp = await _httpClient.GetAsync($"{_baseUrl}/zone_auth");
-            resp.EnsureSuccessStatusCode();
-            var json = await resp.Content.ReadAsStringAsync();
-            var doc = JsonDocument.Parse(json);
-            return doc.RootElement.EnumerateArray().Select(x => x.GetProperty("fqdn").GetString()!).ToArray();
+            var response = await _httpClient.GetAsync($"{_baseUrl}/zone_auth");
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            var result = new List<string>();
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                if (element.TryGetProperty("fqdn", out var fqdn))
+                    result.Add(fqdn.GetString());
+            }
+            return result;
         }
 
-        public async Task<string?> AddTxtRecordAsync(string zone, string name, string value, int ttl = 300)
+        public async Task AddTxtRecordAsync(string zone, string name, string value, int ttl)
         {
-            var payload = new
+            var record = new
             {
                 name = name,
-                text = value,
+                ipv4addr = value,
                 ttl = ttl,
-                view = "default",
-                zone = zone
+                type = "TXT",
+                text = value
             };
-            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-            var resp = await _httpClient.PostAsync($"{_baseUrl}/record:txt", content);
-            if (!resp.IsSuccessStatusCode) return null;
-            return await resp.Content.ReadAsStringAsync();
+            var content = new StringContent(JsonSerializer.Serialize(record), Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync($"{_baseUrl}/record:txt", content);
+            response.EnsureSuccessStatusCode();
         }
 
-        public async Task<bool> RemoveTxtRecordAsync(string zone, string name, string value)
+        public async Task DeleteTxtRecordAsync(string zone, string name, string value)
         {
-            var searchResp = await _httpClient.GetAsync($"{_baseUrl}/record:txt?name={name}&text={value}&zone={zone}");
-            if (!searchResp.IsSuccessStatusCode) return false;
-            var json = await searchResp.Content.ReadAsStringAsync();
-            var doc = JsonDocument.Parse(json);
-            foreach (var elem in doc.RootElement.EnumerateArray())
+            // Lookup the record Ref
+            var searchUrl = $"{_baseUrl}/record:txt?zone={zone}&name={name}";
+            var response = await _httpClient.GetAsync(searchUrl);
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            foreach (var element in doc.RootElement.EnumerateArray())
             {
-                var refId = elem.GetProperty("_ref").GetString();
-                if (!string.IsNullOrEmpty(refId))
+                if (element.TryGetProperty("_ref", out var recordRef))
                 {
-                    var delResp = await _httpClient.DeleteAsync($"{_baseUrl}/{refId}");
-                    if (delResp.IsSuccessStatusCode) return true;
+                    var refValue = recordRef.GetString();
+                    var delResponse = await _httpClient.DeleteAsync($"{_baseUrl}/{refValue}");
+                    delResponse.EnsureSuccessStatusCode();
                 }
             }
-            return false;
         }
     }
 }

@@ -1,24 +1,32 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
 namespace Acmebot.Provider.Infoblox.Infoblox
 {
     public class InfobloxService
     {
         private readonly InfobloxClient _client;
 
-        public InfobloxService(HttpClient httpClient, string baseUrl, string username, string password)
+        public InfobloxService(InfobloxClient client)
         {
-            _client = new InfobloxClient(httpClient, baseUrl, username, password);
+            _client = client;
         }
 
-        public async Task<IEnumerable<string>> GetZonesAsync() => await _client.GetZonesAsync();
-
-        public async Task AddTxtRecordAsync(string zone, string name, string value)
+        public Task<IEnumerable<string>> GetZonesAsync()
         {
-            await _client.AddTxtRecordAsync(zone, name, value);
+            return _client.GetZonesAsync();
         }
 
-        public async Task RemoveTxtRecordAsync(string zone, string name, string value)
+        public Task AddTxtRecordAsync(string zone, string name, FunctionApi.RecordRequest req)
         {
-            await _client.RemoveTxtRecordAsync(zone, name, value);
+            // Assume only a single value for TXT
+            return _client.AddTxtRecordAsync(zone, name, req.Values[0], req.Ttl);
+        }
+
+        public Task DeleteTxtRecordAsync(string zone, string name, FunctionApi.RecordRequest req)
+        {
+            // Assume only a single value for TXT
+            return _client.DeleteTxtRecordAsync(zone, name, req.Values[0]);
         }
     }
 }
