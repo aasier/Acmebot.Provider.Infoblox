@@ -1,0 +1,42 @@
+name: Build and Package Azure Function
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Lint C# code
+        run: dotnet format --verify-no-changes --exclude ACMESharpCore --verbosity detailed --no-restore
+
+      - name: Restore dependencies
+        run: dotnet restore src/Acmebot.Provider.Infoblox/Acmebot.Provider.Infoblox.csproj
+
+      - name: Build
+        run: dotnet build src/Acmebot.Provider.Infoblox/Acmebot.Provider.Infoblox.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish src/Acmebot.Provider.Infoblox/Acmebot.Provider.Infoblox.csproj --configuration Release --output ./publish --no-build
+
+      - name: Zip Function app
+        run: 7z a -mx=9 latest.zip ./publish/*
+        
+      - name: Upload artifacts
+          uses: actions/upload-artifact@v4
+          with:
+            name: dist
+            path: |
+              latest.zip

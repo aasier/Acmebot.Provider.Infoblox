@@ -1,0 +1,10 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "Infoblox__BaseUrl": "https://tu-infoblox/wapi/v2.10",
+    "Infoblox__Username": "usuario",
+    "Infoblox__Password": "clave"
+  }
+}
