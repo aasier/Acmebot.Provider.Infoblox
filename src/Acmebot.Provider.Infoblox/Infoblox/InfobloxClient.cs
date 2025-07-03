@@ -24,6 +24,9 @@ namespace Acmebot.Provider.Infoblox.Infoblox
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(byteArray));
         }
 
+        /// <summary>
+        /// List all authoritative DNS zones.
+        /// </summary>
         public async Task<List<string>> GetZonesAsync()
         {
             var response = await _httpClient.GetAsync($"{_baseUrl}/zone_auth");
@@ -39,6 +42,9 @@ namespace Acmebot.Provider.Infoblox.Infoblox
             return result;
         }
 
+        /// <summary>
+        /// Add a TXT record. Each value = one record (multiple values = multiple calls).
+        /// </summary>
         public async Task AddTxtRecordAsync(string name, string value, int? ttl = null)
         {
             var record = new Dictionary<string, object>
@@ -55,9 +61,12 @@ namespace Acmebot.Provider.Infoblox.Infoblox
             response.EnsureSuccessStatusCode();
         }
 
+        /// <summary>
+        /// Delete all TXT records for a given FQDN (regardless of value).
+        /// </summary>
         public async Task DeleteTxtRecordsAsync(string name)
         {
-            // Busca todos los TXT con ese nombre y borra todos
+            // 1. Find all TXT records for that name
             var searchUrl = $"{_baseUrl}/record:txt?name={Uri.EscapeDataString(name)}";
             var response = await _httpClient.GetAsync(searchUrl);
             response.EnsureSuccessStatusCode();
@@ -69,6 +78,7 @@ namespace Acmebot.Provider.Infoblox.Infoblox
                 if (element.TryGetProperty("_ref", out var recordRef))
                 {
                     var refValue = recordRef.GetString();
+                    // 2. Delete each record by _ref
                     var delUrl = $"{_baseUrl}/{refValue}?_return_as_object=1";
                     var delResponse = await _httpClient.DeleteAsync(delUrl);
                     delResponse.EnsureSuccessStatusCode();
