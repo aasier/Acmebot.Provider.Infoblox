@@ -20,14 +20,14 @@ namespace Acmebot.Provider.Infoblox.Infoblox
 
         public Task AddTxtRecordAsync(string zone, string name, RecordRequest req)
         {
-            // Assume only a single value for TXT
-            return _client.AddTxtRecordAsync(zone, name, req.Values[0], req.Ttl);
+            // Solo se necesita el FQDN (name), valor TXT, y TTL
+            return _client.AddTxtRecordAsync(name, req.Values[0], req.Ttl);
         }
 
         public Task DeleteTxtRecordAsync(string zone, string name, RecordRequest req)
         {
-            // Assume only a single value for TXT
-            return _client.DeleteTxtRecordAsync(zone, name, req.Values[0]);
+            // Solo se necesita el FQDN (name) y valor TXT
+            return _client.DeleteTxtRecordAsync(name, req.Values[0]);
         }
     }
 }
