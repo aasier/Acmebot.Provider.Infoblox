@@ -1,10 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 
 namespace Acmebot.Provider.Infoblox.Infoblox
@@ -24,13 +24,13 @@ namespace Acmebot.Provider.Infoblox.Infoblox
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(byteArray));
         }
 
-        public async Task<IEnumerable<string>> GetZonesAsync()
+        public async Task<List<string>> GetZonesAsync()
         {
             var response = await _httpClient.GetAsync($"{_baseUrl}/zone_auth");
             response.EnsureSuccessStatusCode();
             var json = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(json);
             var result = new List<string>();
+            using var doc = JsonDocument.Parse(json);
             foreach (var element in doc.RootElement.EnumerateArray())
             {
                 if (element.TryGetProperty("fqdn", out var fqdn))
@@ -50,16 +50,14 @@ namespace Acmebot.Provider.Infoblox.Infoblox
                 record["ttl"] = ttl.Value;
 
             var content = new StringContent(JsonSerializer.Serialize(record), Encoding.UTF8, "application/json");
-
-            // Usamos los mismos parámetros de query que el ejemplo de la documentación de Infoblox
             var url = $"{_baseUrl}/record:txt?_return_fields+=name,text&_return_as_object=1";
             var response = await _httpClient.PostAsync(url, content);
             response.EnsureSuccessStatusCode();
         }
 
-        public async Task DeleteTxtRecordAsync(string name, string value)
+        public async Task DeleteTxtRecordsAsync(string name)
         {
-            // 1. Busca el registro usando GET para obtener el _ref del registro que coincida con name y text
+            // Busca todos los TXT con ese nombre y borra todos
             var searchUrl = $"{_baseUrl}/record:txt?name={Uri.EscapeDataString(name)}";
             var response = await _httpClient.GetAsync(searchUrl);
             response.EnsureSuccessStatusCode();
@@ -68,17 +66,12 @@ namespace Acmebot.Provider.Infoblox.Infoblox
             using var doc = JsonDocument.Parse(json);
             foreach (var element in doc.RootElement.EnumerateArray())
             {
-                // Filtra solo el registro TXT con ese valor exacto
-                if (element.TryGetProperty("text", out var txtValue) && txtValue.GetString() == value)
+                if (element.TryGetProperty("_ref", out var recordRef))
                 {
-                    if (element.TryGetProperty("_ref", out var recordRef))
-                    {
-                        var refValue = recordRef.GetString();
-                        // 2. DELETE sobre el _ref
-                        var delUrl = $"{_baseUrl}/{refValue}?_return_as_object=1";
-                        var delResponse = await _httpClient.DeleteAsync(delUrl);
-                        delResponse.EnsureSuccessStatusCode();
-                    }
+                    var refValue = recordRef.GetString();
+                    var delUrl = $"{_baseUrl}/{refValue}?_return_as_object=1";
+                    var delResponse = await _httpClient.DeleteAsync(delUrl);
+                    delResponse.EnsureSuccessStatusCode();
                 }
             }
         }

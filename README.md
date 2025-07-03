@@ -1,12 +1,16 @@
 # Acmebot.Provider.Infoblox
 
-Infoblox provider for Key Vault Acmebot. Automates ACME DNS record management in Infoblox via its REST API (WAPI).
+## Descripción
+
+Este proyecto expone una API HTTP compatible con el "Custom DNS API spec" de Key Vault Acmebot, pero utiliza Infoblox como backend real.  
+Traducirá operaciones estándar de la API ("zones", "upsert record", "delete record") a llamadas WAPI de Infoblox.  
+De este modo, puedes usar la integración automática de Acmebot con Infoblox sin modificar Acmebot.
 
 ---
 
-## Configuration
+## Configuración
 
-1. **Create a `local.settings.json` file (or set environment variables in Azure):**
+Crea o edita `local.settings.json`:
 
 ```json
 {
@@ -14,152 +18,138 @@ Infoblox provider for Key Vault Acmebot. Automates ACME DNS record management in
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
-    "Infoblox__BaseUrl": "https://your-infoblox/wapi/v2.10",
-    "Infoblox__Username": "your_user",
-    "Infoblox__Password": "your_password"
+    "Infoblox__BaseUrl": "https://tu-infoblox/wapi/v2.10",
+    "Infoblox__Username": "usuario",
+    "Infoblox__Password": "contraseña"
   }
 }
 ```
-
-2. **Endpoints exposed by the Function App:**
-
-- **GET /api/zones**  
-  Returns the list of DNS zones.
-- **PUT /api/zones/{zone}/records/{name}**  
-  Adds a TXT record. Body example:  
-  ```json
-  { "type": "TXT", "ttl": 300, "values": ["xxxx"] }
-  ```
-- **DELETE /api/zones/{zone}/records/{name}**  
-  Deletes a TXT record. Body example:  
-  ```json
-  { "type": "TXT", "ttl": 300, "values": ["xxxx"] }
-  ```
-
-3. **Build and run locally:**
-
-```sh
-cd src/Acmebot.Provider.Infoblox
-dotnet restore
-dotnet build
-func start
-```
+- `Infoblox__BaseUrl` es la URL base de la API WAPI de Infoblox (sin barra final).
+- Usa credenciales con permisos de escritura en DNS.
 
 ---
 
-## Authentication: Using the Function Key (`x-functions-key`)
+## Endpoints y Spec soportados
 
-Endpoints require a valid Function Key (`AuthorizationLevel.Function`).
+### 1. Listar zonas
 
-You can pass the key:
+**GET /zones**
 
-- As a URL parameter:  
-  ```
-  http://localhost:7071/api/zones?code=local
-  ```
-- As a header:  
-  ```
-  x-functions-key: local
-  ```
-
----
-
-## Usage Examples
-
-### 1. List DNS Zones
-
-```sh
-curl "http://localhost:7071/api/zones?code=local"
-```
-
-### 2. Add a TXT Record
-
-Suppose you want to add a TXT record for `sub.domain.com` with value `myvalue` in the zone `domain.com`:
-
-```sh
-curl -X PUT "http://localhost:7071/api/zones/domain.com/records/sub.domain.com?code=local" \
-  -H "Content-Type: application/json" \
-  -d '{ "type": "TXT", "ttl": 300, "values": ["myvalue"] }'
-```
-
-### 3. Delete a TXT Record
-
-Delete the `myvalue` TXT record for `sub.domain.com` in `domain.com`:
-
-```sh
-curl -X DELETE "http://localhost:7071/api/zones/domain.com/records/sub.domain.com?code=local" \
-  -H "Content-Type: application/json" \
-  -d '{ "type": "TXT", "ttl": 300, "values": ["myvalue"] }'
-```
-
----
-
-## How It Works (Infoblox Integration)
-
-- **Add TXT:**  
-  Calls Infoblox WAPI `POST /record:txt` with body:
-  ```json
+**Respuesta:**
+```json
+[
   {
-    "name": "sub.domain.com",
-    "text": "myvalue",
-    "ttl": 300
+    "id": "example_com",
+    "name": "example.com",
+    "nameServers": ["x.x.x.x", "y.y.y.y"] // opcional, si Infoblox lo soporta
   }
-  ```
-- **Delete TXT:**  
-  - Looks up the TXT record for `name` and `text` via `GET /record:txt?name=sub.domain.com`
-  - Finds the matching `_ref` with matching `"text": "myvalue"`
-  - DELETEs `/record:txt/{_ref}`
+]
+```
 
 ---
 
-## Project Structure
+### 2. Crear/actualizar registros TXT
+
+**PUT /zones/{zoneId}/records/{recordName}**
+
+**Cuerpo:**
+```json
+{
+  "type": "TXT",
+  "ttl": 60,
+  "values": ["xxxxxx", "yyyyyy"]
+}
+```
+
+- Se borrarán todos los registros TXT previos de ese nombre antes de añadir los nuevos.
+
+---
+
+### 3. Eliminar registros TXT
+
+**DELETE /zones/{zoneId}/records/{recordName}**
+
+- Elimina todos los registros TXT asociados a ese nombre (no requiere body).
+
+---
+
+## Ejemplos de uso
+
+### Listar zonas
+
+```sh
+curl -H "x-functions-key: local" http://localhost:7071/api/zones
+```
+
+### Añadir varios TXT
+
+```sh
+curl -X PUT "http://localhost:7071/api/zones/example_com/records/_acme-challenge.example.com" \
+  -H "Content-Type: application/json" \
+  -H "x-functions-key: local" \
+  -d '{ "type": "TXT", "ttl": 60, "values": ["valor1", "valor2"] }'
+```
+
+### Eliminar todos los TXT de un nombre
+
+```sh
+curl -X DELETE "http://localhost:7071/api/zones/example_com/records/_acme-challenge.example.com" \
+  -H "x-functions-key: local"
+```
+
+---
+
+## Autenticación
+
+- Usa el parámetro `code=local` en la URL o el header `x-functions-key: local`.
+
+---
+
+## Estructura del proyecto
 
 ```
 src/
   Acmebot.Provider.Infoblox/
-    Acmebot.Provider.Infoblox.csproj
     Program.cs
-    host.json
-    local.settings.json
     FunctionApi.cs
-    Models/
-      RecordRequest.cs
     Infoblox/
       InfobloxClient.cs
       InfobloxService.cs
+    Models/
+      ZoneResponse.cs
+      RecordRequest.cs
+    local.settings.json
 ```
 
 ---
 
-## Troubleshooting
+## Pruebas locales
 
-- **Missing `Task<>`, `HttpClient`, etc. errors:**  
-  Make sure you have the correct `using` statements in each `.cs` file:
-  ```csharp
-  using System.Threading.Tasks;
-  using System.Net.Http;
-  using System.Collections.Generic;
-  ```
-- **401 Unauthorized:**  
-  Ensure you are passing the correct function key (`code=local` or from Azure Portal).
-- **Infoblox API errors:**  
-  - Double-check WAPI endpoint, credentials, and that your user has permissions to create/delete TXT records.
-  - Check logs in Azure or local Functions host for detailed error messages.
-
----
-
-## Testing Locally
-
-1. **Start the function app:**
+1. Inicia la función:
    ```sh
    func start
    ```
-2. **Run the example cURL commands above.**
-3. **Check the terminal for logs or errors.**
-4. **Verify changes in your Infoblox grid (UI or API).**
+
+2. Haz peticiones como en los ejemplos de arriba.
+
+3. Observa los logs para cualquier error o detalle.
 
 ---
 
-## Questions?
+## Notas técnicas
 
-Open an issue in this repository.
+- El endpoint `/zones` responde con `{ id, name }` adaptando los datos de Infoblox; `id` es el FQDN reemplazando `.` por `_`.
+- El endpoint PUT elimina primero todos los TXT previos para ese nombre y luego añade uno por cada valor.
+- El endpoint DELETE borra todos los TXT para ese nombre.
+- El backend usa la WAPI de Infoblox, autenticando por Basic Auth.
+
+---
+
+## FAQ y soporte
+
+¿Problemas?  
+- Verifica credenciales y permisos en Infoblox.
+- Revisa los logs de Azure Functions para detalles de errores.
+
+¿Dudas o contribuciones?  
+Abre un issue o PR en este repositorio.
