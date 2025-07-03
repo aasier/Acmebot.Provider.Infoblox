@@ -35,8 +35,8 @@ jobs:
         run: 7z a -mx=9 latest.zip ./publish/*
         
       - name: Upload artifacts
-          uses: actions/upload-artifact@v4
-          with:
-            name: dist
-            path: |
-              latest.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            latest.zip
