@@ -20,7 +20,7 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Lint C# code
-        run: dotnet format --verify-no-changes --exclude ACMESharpCore --verbosity detailed --no-restore
+        run: dotnet format ./src/Acmebot.Provider.Infoblox/Acmebot.Provider.Infoblox.csproj --verify-no-changes --exclude ACMESharpCore --verbosity detailed --no-restore
 
       - name: Restore dependencies
         run: dotnet restore src/Acmebot.Provider.Infoblox/Acmebot.Provider.Infoblox.csproj
