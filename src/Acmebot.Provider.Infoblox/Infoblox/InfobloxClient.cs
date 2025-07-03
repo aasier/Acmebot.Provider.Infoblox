@@ -39,36 +39,46 @@ namespace Acmebot.Provider.Infoblox.Infoblox
             return result;
         }
 
-        public async Task AddTxtRecordAsync(string zone, string name, string value, int ttl)
+        public async Task AddTxtRecordAsync(string name, string value, int? ttl = null)
         {
-            var record = new
+            var record = new Dictionary<string, object>
             {
-                name = name,
-                ipv4addr = value,
-                ttl = ttl,
-                type = "TXT",
-                text = value
+                ["name"] = name,
+                ["text"] = value
             };
+            if (ttl.HasValue)
+                record["ttl"] = ttl.Value;
+
             var content = new StringContent(JsonSerializer.Serialize(record), Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync($"{_baseUrl}/record:txt", content);
+
+            // Usamos los mismos parámetros de query que el ejemplo de la documentación de Infoblox
+            var url = $"{_baseUrl}/record:txt?_return_fields+=name,text&_return_as_object=1";
+            var response = await _httpClient.PostAsync(url, content);
             response.EnsureSuccessStatusCode();
         }
 
-        public async Task DeleteTxtRecordAsync(string zone, string name, string value)
+        public async Task DeleteTxtRecordAsync(string name, string value)
         {
-            // Lookup the record Ref
-            var searchUrl = $"{_baseUrl}/record:txt?zone={zone}&name={name}";
+            // 1. Busca el registro usando GET para obtener el _ref del registro que coincida con name y text
+            var searchUrl = $"{_baseUrl}/record:txt?name={Uri.EscapeDataString(name)}";
             var response = await _httpClient.GetAsync(searchUrl);
             response.EnsureSuccessStatusCode();
             var json = await response.Content.ReadAsStringAsync();
+
             using var doc = JsonDocument.Parse(json);
             foreach (var element in doc.RootElement.EnumerateArray())
             {
-                if (element.TryGetProperty("_ref", out var recordRef))
+                // Filtra solo el registro TXT con ese valor exacto
+                if (element.TryGetProperty("text", out var txtValue) && txtValue.GetString() == value)
                 {
-                    var refValue = recordRef.GetString();
-                    var delResponse = await _httpClient.DeleteAsync($"{_baseUrl}/{refValue}");
-                    delResponse.EnsureSuccessStatusCode();
+                    if (element.TryGetProperty("_ref", out var recordRef))
+                    {
+                        var refValue = recordRef.GetString();
+                        // 2. DELETE sobre el _ref
+                        var delUrl = $"{_baseUrl}/{refValue}?_return_as_object=1";
+                        var delResponse = await _httpClient.DeleteAsync(delUrl);
+                        delResponse.EnsureSuccessStatusCode();
+                    }
                 }
             }
         }
