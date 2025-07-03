@@ -1,11 +1,11 @@
 using System.Threading.Tasks;
-using System.Collections.Generic;
+using System.Net;
+using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
-using System.Net;
-using System.Text.Json;
 using Acmebot.Provider.Infoblox.Infoblox;
+using Acmebot.Provider.Infoblox.Models;
 
 namespace Acmebot.Provider.Infoblox
 {
@@ -51,12 +51,5 @@ namespace Acmebot.Provider.Infoblox
             var response = req.CreateResponse(HttpStatusCode.NoContent);
             return response;
         }
-    }
-
-    public class RecordRequest
-    {
-        public string Type { get; set; }
-        public int Ttl { get; set; }
-        public List<string> Values { get; set; }
     }
 }
