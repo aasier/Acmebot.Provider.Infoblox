@@ -39,4 +39,4 @@ jobs:
         with:
           name: dist
           path: |
-            latest.zip
+            ./publish/*
